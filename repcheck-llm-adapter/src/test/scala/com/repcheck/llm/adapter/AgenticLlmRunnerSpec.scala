@@ -18,7 +18,8 @@ import repcheck.shared.models.llm.tool.{LlmTool, ToolCall, ToolInputError, ToolS
 /**
  * §10c AgenticLlmRunner conformance: a scripted session drives the loop deterministically (record/replay) so the loop
  * behaviour is verified with no live model — bounds, termination, tool dispatch, never returns unstructured, and the
- * context contract (open once; send only incremental deltas).
+ * context contract: the session is opened once and every model call is handed the retained tools + the conversation
+ * grown by exactly the delta.
  */
 class AgenticLlmRunnerSpec extends AsyncFlatSpec with AsyncIOSpec with Matchers {
 
@@ -29,37 +30,41 @@ class AgenticLlmRunnerSpec extends AsyncFlatSpec with AsyncIOSpec with Matchers 
   private val validSubmit                  = StructuredCodec[TaxonomyOutput].encoder(sample)
   private def submitTurn(args: Json): Turn = Turn(0, List(ToolCall("submit", args)), Nil)
 
-  /**
-   * What a scripted run recorded: every delta the session was sent, how many times open() ran, the tools open() saw.
-   */
+  /** What a scripted run recorded: the conversation + tools each model call saw, and how many times open() ran. */
   final private case class Recorder(
-    sends: Ref[IO, Vector[List[ChatMessage]]],
+    conversations: Ref[IO, Vector[List[ChatMessage]]],
+    toolsPerCall: Ref[IO, Vector[List[ToolSpec]]],
     opens: Ref[IO, Int],
-    toolsSeen: Ref[IO, List[ToolSpec]],
   )
 
   private def scripted(turns: List[Turn]): IO[(AgenticLlmRunner[IO], Recorder)] =
     for {
-      remaining <- Ref[IO].of(turns)
-      sends     <- Ref[IO].of(Vector.empty[List[ChatMessage]])
-      opens     <- Ref[IO].of(0)
-      toolsSeen <- Ref[IO].of(List.empty[ToolSpec])
+      remaining     <- Ref[IO].of(turns)
+      conversations <- Ref[IO].of(Vector.empty[List[ChatMessage]])
+      toolsPerCall  <- Ref[IO].of(Vector.empty[List[ToolSpec]])
+      opens         <- Ref[IO].of(0)
     } yield {
       val provider = new LlmProvider[IO] {
         def open(system: String, tools: List[ToolSpec], pol: LoopPolicy): Resource[IO, LlmSession[IO]] =
-          Resource
-            .eval(opens.update(_ + 1) *> toolsSeen.set(tools))
-            .as(
-              new LlmSession[IO] {
-                def exchange(newMessages: List[ChatMessage]): IO[Turn] =
-                  sends.update(_ :+ newMessages) *> remaining.modify {
-                    case h :: t => (t, h)
-                    case Nil    => (Nil, Turn(0, Nil, Nil))
-                  }
-              }
-            )
+          Resource.eval(
+            for {
+              _       <- opens.update(_ + 1)
+              history <- Ref[IO].of(List.empty[ChatMessage])
+            } yield new LlmSession[IO](system, tools, pol, history) {
+              protected def respond(
+                sys: String,
+                tls: List[ToolSpec],
+                p: LoopPolicy,
+                conversation: List[ChatMessage],
+              ): IO[Turn] =
+                conversations.update(_ :+ conversation) *> toolsPerCall.update(_ :+ tls) *> remaining.modify {
+                  case h :: t => (t, h)
+                  case Nil    => (Nil, Turn(0, Nil, Nil))
+                }
+            }
+          )
       }
-      (new DefaultAgenticLlmRunner[IO](provider), Recorder(sends, opens, toolsSeen))
+      (new DefaultAgenticLlmRunner[IO](provider), Recorder(conversations, toolsPerCall, opens))
     }
 
   "the runner" should "terminate on a valid submit, returning the typed output" in {
@@ -128,32 +133,33 @@ class AgenticLlmRunnerSpec extends AsyncFlatSpec with AsyncIOSpec with Matchers 
       }
   }
 
-  // --- enforcement of the context contract (the seam can't guarantee provider-side caching; this pins the runner) ---
+  // --- enforcement of the context contract ---
 
-  it should "open the session exactly once and supply the tool catalogue only there, whatever the turn count" in {
+  it should "open the session exactly once and hand the retained tool catalogue to every model call" in {
     val echoCall = Turn(0, List(ToolCall("echo", Json.fromString("hi"))), Nil)
     scripted(List(echoCall, echoCall, submitTurn(validSubmit)))
       .flatMap {
         case (r, rec) =>
-          r.run[TaxonomyOutput](prompt, List(EchoTool), policy) *> (rec.opens.get, rec.toolsSeen.get).tupled
+          r.run[TaxonomyOutput](prompt, List(EchoTool), policy) *> (rec.opens.get, rec.toolsPerCall.get).tupled
       }
       .asserting {
-        case (opens, tools) =>
+        case (opens, toolsPerCall) =>
           opens shouldBe 1
-          tools.map(_.name) should contain allOf ("submit", "echo")
+          toolsPerCall.size shouldBe 3
+          toolsPerCall.map(_.map(_.name)).distinct shouldBe Vector(List("submit", "echo"))
       }
   }
 
-  it should "send only incremental deltas — the initial prompt, then just the new tool result, never the full history" in {
+  it should "grow the conversation by exactly the delta each turn — initial prompt, then only the new tool result" in {
     val echoCall = Turn(0, List(ToolCall("echo", Json.fromString("hi"))), Nil)
     scripted(List(echoCall, submitTurn(validSubmit)))
-      .flatMap { case (r, rec) => r.run[TaxonomyOutput](prompt, List(EchoTool), policy) *> rec.sends.get }
-      .asserting { sends =>
-        sends.toList match {
-          case first :: second :: Nil =>
-            first shouldBe prompt.messages                      // first exchange = the initial prompt only
-            second shouldBe List(ChatMessage("tool", "\"hi\"")) // second exchange = ONLY the new tool result
-          case other => fail(s"expected exactly 2 exchanges, got $other")
+      .flatMap { case (r, rec) => r.run[TaxonomyOutput](prompt, List(EchoTool), policy) *> rec.conversations.get }
+      .asserting { conversations =>
+        conversations.toList match {
+          case c1 :: c2 :: Nil =>
+            c1 shouldBe prompt.messages                                    // turn 1: just the initial prompt
+            c2 shouldBe (prompt.messages :+ ChatMessage("tool", "\"hi\"")) // turn 2: prompt + ONLY the new tool result
+          case other => fail(s"expected exactly 2 model calls, got $other")
         }
       }
   }
