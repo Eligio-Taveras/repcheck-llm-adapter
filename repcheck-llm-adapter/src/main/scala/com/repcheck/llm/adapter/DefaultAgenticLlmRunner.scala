@@ -21,6 +21,8 @@ import repcheck.shared.models.llm.tool.{LlmTool, ToolCall, ToolResult, ToolSpec}
  */
 final class DefaultAgenticLlmRunner[F[_]: Sync: UUIDGen](provider: LlmProvider[F]) extends AgenticLlmRunner[F] {
 
+  import DefaultAgenticLlmRunner.{LoopState, RunContext}
+
   def run[A](prompt: AssembledPrompt, tools: List[LlmTool[F]], policy: LoopPolicy)(using
     sc: StructuredCodec[A]
   ): F[AgenticResult[A]] = {
@@ -28,54 +30,55 @@ final class DefaultAgenticLlmRunner[F[_]: Sync: UUIDGen](provider: LlmProvider[F
     val allTools = submit :: tools
     val byName   = allTools.map(t => t.spec.name -> t).toMap
     val specs    = allTools.map(_.spec)
-    UUIDGen[F].randomUUID.flatMap(cid => loop(cid, prompt, specs, byName, policy, 0, Vector.empty))
+    UUIDGen[F].randomUUID.flatMap { correlationId =>
+      loop(RunContext(correlationId, specs, byName, policy), LoopState(prompt, 0, Vector.empty))
+    }
   }
 
-  private def loop[A](
-    correlationId: UUID,
-    prompt: AssembledPrompt,
-    specs: List[ToolSpec],
-    byName: Map[String, LlmTool[F]],
-    policy: LoopPolicy,
-    iteration: Int,
-    transcript: Vector[Turn],
-  )(using sc: StructuredCodec[A]): F[AgenticResult[A]] =
-    if (iteration >= policy.maxIterations) {
+  private def loop[A](ctx: RunContext[F], state: LoopState)(using sc: StructuredCodec[A]): F[AgenticResult[A]] =
+    if (state.iteration >= ctx.policy.maxIterations) {
       Sync[F].raiseError(
-        AgenticRunFailed(correlationId, iteration, "iteration budget exhausted without a valid submit")
+        AgenticRunFailed(ctx.correlationId, state.iteration, "iteration budget exhausted without a valid submit")
       )
     } else {
-      provider.chatWithTools(prompt, specs, policy).flatMap { turn =>
-        val recorded = turn.copy(index = iteration)
+      provider.chatWithTools(state.prompt, ctx.specs, ctx.policy).flatMap { turn =>
+        val recorded = turn.copy(index = state.iteration)
         recorded.toolCalls.find(_.name == SubmitTool.Name) match {
-          case Some(submitCall) =>
-            sc.decoder.decodeJson(submitCall.arguments) match {
-              case Right(a) =>
-                Sync[F].pure(AgenticResult(a, iteration + 1, (transcript :+ recorded).toList, correlationId))
-              case Left(failure) =>
-                val next = prompt.appended(decodeFeedback(failure.getMessage))
-                loop(correlationId, next, specs, byName, policy, iteration + 1, transcript :+ recorded)
-            }
-          case None =>
-            recorded.toolCalls.traverse(dispatch(byName)).flatMap { results =>
-              val withResults = recorded.copy(toolResults = results)
-              loop(
-                correlationId,
-                appendResults(prompt, results),
-                specs,
-                byName,
-                policy,
-                iteration + 1,
-                transcript :+ withResults,
-              )
-            }
+          case Some(submitCall) => completeOrRetry(ctx, state, recorded, submitCall)
+          case None             => dispatchThenContinue(ctx, state, recorded)
         }
       }
     }
 
-  private def dispatch(byName: Map[String, LlmTool[F]])(call: ToolCall): F[ToolResult] =
+  /** A `submit` ends the loop when its arguments satisfy the output schema; otherwise re-prompt and keep going. */
+  private def completeOrRetry[A](
+    ctx: RunContext[F],
+    state: LoopState,
+    recorded: Turn,
+    submitCall: ToolCall,
+  )(using sc: StructuredCodec[A]): F[AgenticResult[A]] =
+    sc.decoder.decodeJson(submitCall.arguments) match {
+      case Right(output) =>
+        Sync[F].pure(
+          AgenticResult(output, state.iteration + 1, (state.transcript :+ recorded).toList, ctx.correlationId)
+        )
+      case Left(failure) =>
+        loop(ctx, state.advanced(state.prompt.appended(schemaRetryMessage(failure.getMessage)), recorded))
+    }
+
+  /** No `submit` yet: run every tool the model called, feed the results back, and continue the loop. */
+  private def dispatchThenContinue[A](
+    ctx: RunContext[F],
+    state: LoopState,
+    recorded: Turn,
+  )(using sc: StructuredCodec[A]): F[AgenticResult[A]] =
+    recorded.toolCalls.traverse(dispatchToolCall(ctx.byName)).flatMap { results =>
+      loop(ctx, state.advanced(appendToolResults(state.prompt, results), recorded.copy(toolResults = results)))
+    }
+
+  private def dispatchToolCall(byName: Map[String, LlmTool[F]])(call: ToolCall): F[ToolResult] =
     byName.get(call.name) match {
-      case None => Sync[F].pure(ToolResult(call.name, errorJson(s"unknown tool '${call.name}'"), isError = true))
+      case None => Sync[F].pure(ToolResult(call.name, unknownToolError(call.name), isError = true))
       case Some(tool) =>
         tool.decode(call.arguments) match {
           case Left(err) => Sync[F].pure(ToolResult(call.name, err.asJson, isError = true))
@@ -83,11 +86,31 @@ final class DefaultAgenticLlmRunner[F[_]: Sync: UUIDGen](provider: LlmProvider[F
         }
     }
 
-  private def appendResults(prompt: AssembledPrompt, results: List[ToolResult]): AssembledPrompt =
+  private def appendToolResults(prompt: AssembledPrompt, results: List[ToolResult]): AssembledPrompt =
     results.foldLeft(prompt)((p, r) => p.appended(ChatMessage("tool", r.content.noSpaces)))
 
-  private def decodeFeedback(message: String): ChatMessage =
+  private def schemaRetryMessage(message: String): ChatMessage =
     ChatMessage("user", s"Your submit did not match the required schema: $message. Re-emit a valid submit.")
 
-  private def errorJson(message: String): Json = Json.obj("error" -> Json.fromString(message))
+  private def unknownToolError(name: String): Json = Json.obj("error" -> Json.fromString(s"unknown tool '$name'"))
+}
+
+object DefaultAgenticLlmRunner {
+
+  /** Immutable context for one `run`: the correlation id, the advertised tool specs, the tool registry, the policy. */
+  final private case class RunContext[F[_]](
+    correlationId: UUID,
+    specs: List[ToolSpec],
+    byName: Map[String, LlmTool[F]],
+    policy: LoopPolicy,
+  )
+
+  /** Per-iteration loop state: the running prompt, how many turns have elapsed, and the transcript so far. */
+  final private case class LoopState(prompt: AssembledPrompt, iteration: Int, transcript: Vector[Turn]) {
+
+    def advanced(nextPrompt: AssembledPrompt, completed: Turn): LoopState =
+      LoopState(nextPrompt, iteration + 1, transcript :+ completed)
+
+  }
+
 }
