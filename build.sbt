@@ -86,9 +86,10 @@ lazy val repcheckllmadapter = (project in file("repcheck-llm-adapter"))
     // Suppress Scala 3 ScalaTest-matcher warnings in TEST sources only (mirrors data-ingestion / shared-models)
     Test / scalacOptions += "-Wconf:msg=unused value of type:s",
     Test / scalacOptions += "-Wconf:msg=is not declared infix:s",
-    // Coverage gate: every file must be >= 95% statement coverage or CI fails (mirrors shared-models)
-    coverageMinimumStmtPerFile := 95,
-    coverageFailOnMinimum      := true,
+    // Coverage gate: every file must be >= 95% statement AND branch coverage or CI fails (mirrors shared-models)
+    coverageMinimumStmtPerFile   := 95,
+    coverageMinimumBranchPerFile := 95,
+    coverageFailOnMinimum         := true,
     exceptionUniquenessRootPackages := Seq("com.repcheck")
   )
 
