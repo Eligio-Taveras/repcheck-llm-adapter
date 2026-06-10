@@ -39,8 +39,13 @@ jobs:
       - name: Check Scalafix rules
         run: sbt "scalafixAll --check"
 
-      - name: Run tests with coverage
-        run: sbt coverage test coverageReport
+      - name: Run tests with coverage instrumentation
+        run: sbt coverage test
+
+      # Hard gate: coverageReport fails the build if any file is below the per-file minimums
+      # (coverageMinimumStmtPerFile / coverageMinimumBranchPerFile := 95, coverageFailOnMinimum := true in build.sbt).
+      - name: Enforce per-file coverage gate (>= 95% statement AND branch, every file)
+        run: sbt coverageReport
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
