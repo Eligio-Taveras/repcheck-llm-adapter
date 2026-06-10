@@ -11,6 +11,7 @@ import io.circe.syntax._
 
 import repcheck.shared.models.llm.agentic.{AgenticResult, LoopPolicy, Turn}
 import repcheck.shared.models.llm.codec.{StructuredCodec, StructuredSchema}
+import repcheck.shared.models.llm.prompt.{AssembledPrompt, ChatMessage}
 import repcheck.shared.models.llm.tool.{LlmTool, ToolCall, ToolResult}
 
 /**
