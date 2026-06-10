@@ -80,7 +80,7 @@ lazy val repcheckllmadapter = (project in file("repcheck-llm-adapter"))
       ++ catsEffect ++ testDeps
     ,
     libraryDependencies += "com.h2database" % "h2" % "2.2.224" % Test,
-    libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.54", // F1 contracts (llm/*)
+    libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.55", // F1 contracts (llm/*, incl. llm/prompt)
     // Circe semi-auto derivation for large case classes
     scalacOptions += "-Xmax-inlines:64",
     // Suppress Scala 3 ScalaTest-matcher warnings in TEST sources only (mirrors data-ingestion / shared-models)

@@ -10,6 +10,7 @@ import io.circe.Json
 import org.scalatest.flatspec.AsyncFlatSpec
 import org.scalatest.matchers.should.Matchers
 import repcheck.shared.models.llm.agentic.{LoopPolicy, Turn}
+import repcheck.shared.models.llm.prompt.ChatMessage
 import repcheck.shared.models.llm.tool.ToolSpec
 
 /**

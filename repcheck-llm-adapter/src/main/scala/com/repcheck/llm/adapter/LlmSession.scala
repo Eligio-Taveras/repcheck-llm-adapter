@@ -5,6 +5,7 @@ import cats.effect.Ref
 import cats.syntax.all._
 
 import repcheck.shared.models.llm.agentic.{LoopPolicy, Turn}
+import repcheck.shared.models.llm.prompt.ChatMessage
 import repcheck.shared.models.llm.tool.ToolSpec
 
 /**

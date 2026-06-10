@@ -2,6 +2,7 @@ package com.repcheck.llm.adapter
 
 import repcheck.shared.models.llm.agentic.{AgenticResult, LoopPolicy}
 import repcheck.shared.models.llm.codec.StructuredCodec
+import repcheck.shared.models.llm.prompt.AssembledPrompt
 import repcheck.shared.models.llm.tool.LlmTool
 
 /**

@@ -13,6 +13,7 @@ import org.scalatest.matchers.should.Matchers
 import repcheck.shared.models.llm.agentic.{LoopPolicy, Turn}
 import repcheck.shared.models.llm.codec.StructuredCodec
 import repcheck.shared.models.llm.output.{ProposedNode, TaxonomyOutput}
+import repcheck.shared.models.llm.prompt.{AssembledPrompt, ChatMessage}
 import repcheck.shared.models.llm.tool.{LlmTool, ToolCall, ToolInputError, ToolSpec}
 
 /**
