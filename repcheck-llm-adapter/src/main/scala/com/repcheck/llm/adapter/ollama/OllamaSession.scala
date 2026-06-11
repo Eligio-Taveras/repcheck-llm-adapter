@@ -6,6 +6,8 @@ import cats.effect.syntax.temporal._
 import cats.effect.{Async, Ref}
 import cats.syntax.all._
 
+import io.circe.Json
+
 import org.http4s.circe._
 import org.http4s.client.Client
 import org.http4s.{Method, Request}
@@ -44,15 +46,9 @@ final private[ollama] class OllamaSession[F[_]: Async](
     for {
       current <- state.get
       _       <- raiseWhenBudgetSpent(policy, current)
-      transcript = current.transcript ++ conversation.drop(current.consumed).map(OllamaWire.wireMessage)
-      reply <- retried(postChat(system, tools, policy, transcript))
-      _ <- state.set(
-        OllamaSessionState(
-          conversation.length,
-          transcript :+ reply.assistantMessage,
-          current.spentTokens + reply.promptEvalCount + reply.evalCount,
-        )
-      )
+      extended = current.extendedWith(conversation)
+      reply <- retried(postChat(system, tools, policy, extended))
+      _     <- state.set(current.advancedBy(conversation.length, extended, reply))
     } yield Turn(0, reply.toolCalls, Nil)
 
   private[ollama] def raiseWhenBudgetSpent(policy: LoopPolicy, current: OllamaSessionState): F[Unit] =
@@ -69,7 +65,7 @@ final private[ollama] class OllamaSession[F[_]: Async](
     system: String,
     tools: List[ToolSpec],
     policy: LoopPolicy,
-    transcript: Vector[io.circe.Json],
+    transcript: Vector[Json],
   ): F[OllamaChatReply] = {
     val request = Request[F](Method.POST, OllamaWire.chatUri(config.baseUri))
       .withEntity(OllamaWire.requestJson(config, system, tools, transcript))

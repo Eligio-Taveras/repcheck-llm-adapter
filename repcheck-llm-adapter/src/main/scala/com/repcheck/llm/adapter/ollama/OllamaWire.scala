@@ -1,5 +1,7 @@
 package com.repcheck.llm.adapter.ollama
 
+import cats.syntax.all._
+
 import io.circe.Json
 import io.circe.parser.parse
 import io.circe.syntax._
@@ -46,7 +48,7 @@ private[ollama] object OllamaWire {
       body    <- parse(rawBody).left.map(e => OllamaResponseParseFailed(e.message, rawBody))
       message <- body.hcursor.get[Json]("message").left.map(_ => OllamaResponseParseFailed("no 'message'", rawBody))
       calls   <- toolCallsOf(message, rawBody)
-    } yield OllamaChatReply(message, calls, countOf(body, "prompt_eval_count"), countOf(body, "eval_count"))
+    } yield OllamaChatReply(message, calls, tokenCountOf(body, "prompt_eval_count"), tokenCountOf(body, "eval_count"))
 
   private def systemMessage(system: String): Json =
     Json.obj("role" -> "system".asJson, "content" -> system.asJson)
@@ -55,15 +57,8 @@ private[ollama] object OllamaWire {
     s"${spec.description} Example arguments: ${spec.exampleArgs.noSpaces}. " +
       s"Result schema: ${spec.resultSchema.noSpaces}. Example result: ${spec.exampleResult.noSpaces}."
 
-  private def toolCallsOf(message: Json, rawBody: String): Either[OllamaResponseParseFailed, List[ToolCall]] = {
-    val calls = message.hcursor.get[List[Json]]("tool_calls").getOrElse(Nil)
-    calls.foldRight[Either[OllamaResponseParseFailed, List[ToolCall]]](Right(Nil)) { (call, acc) =>
-      for {
-        rest   <- acc
-        parsed <- toolCallOf(call, rawBody)
-      } yield parsed :: rest
-    }
-  }
+  private def toolCallsOf(message: Json, rawBody: String): Either[OllamaResponseParseFailed, List[ToolCall]] =
+    message.hcursor.get[List[Json]]("tool_calls").getOrElse(Nil).traverse(toolCallOf(_, rawBody))
 
   private def toolCallOf(call: Json, rawBody: String): Either[OllamaResponseParseFailed, ToolCall] = {
     val function = call.hcursor.downField("function")
@@ -77,7 +72,7 @@ private[ollama] object OllamaWire {
   private def normalizedArguments(args: Json): Json =
     args.asString.flatMap(raw => parse(raw).toOption).getOrElse(args)
 
-  private def countOf(body: Json, field: String): Long =
+  private def tokenCountOf(body: Json, field: String): Long =
     body.hcursor.get[Long](field).getOrElse(0L)
 
 }
