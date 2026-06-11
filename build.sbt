@@ -33,6 +33,7 @@ lazy val commonSettings = Seq(
   resolvers ++= Seq(
     "GitHub Packages - shared-models" at "https://maven.pkg.github.com/Eligio-Taveras/repcheck-shared-models",
     "GitHub Packages - pipeline-models" at "https://maven.pkg.github.com/Eligio-Taveras/repcheck-pipeline-models",
+    "GitHub Packages - repcheck-utils" at "https://maven.pkg.github.com/Eligio-Taveras/repcheck-utils",
   ),
   libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "3.2.18" % Test
@@ -81,6 +82,9 @@ lazy val repcheckllmadapter = (project in file("repcheck-llm-adapter"))
     ,
     libraryDependencies += "com.h2database" % "h2" % "2.2.224" % Test,
     libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.55", // F1 contracts (llm/*, incl. llm/prompt)
+    libraryDependencies += "com.repcheck" %% "repcheck-utils" % "0.1.4", // RetryWrapper/ErrorClassifier + DockerRequired tag
+    // DockerRequired conformance specs need a live Ollama; excluded from `sbt test` (run them explicitly, see README)
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-l", "DockerRequired"),
     // Circe semi-auto derivation for large case classes
     scalacOptions += "-Xmax-inlines:64",
     // Suppress Scala 3 ScalaTest-matcher warnings in TEST sources only (mirrors data-ingestion / shared-models)
