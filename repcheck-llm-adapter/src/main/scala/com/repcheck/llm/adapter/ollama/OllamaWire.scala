@@ -1,7 +1,7 @@
 package com.repcheck.llm.adapter.ollama
 
 import io.circe.syntax._
-import io.circe.{Json, parser}
+import io.circe.{parser, Json}
 
 import org.http4s.Uri
 

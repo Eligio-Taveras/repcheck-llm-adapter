@@ -6,7 +6,7 @@ import cats.effect.IO
 import cats.effect.testing.scalatest.AsyncIOSpec
 
 import io.circe.syntax._
-import io.circe.{Json, parser}
+import io.circe.{parser, Json}
 
 import org.http4s.Uri
 import org.http4s.ember.client.EmberClientBuilder
