@@ -49,13 +49,15 @@ final private[ollama] class OllamaSession[F[_]: Async](
       extended = current.extendedWith(conversation)
       reply <- retried(postChat(system, tools, policy, extended))
       _     <- state.set(current.advancedBy(conversation.length, extended, reply))
-    } yield Turn(0, reply.toolCalls, Nil)
+    } yield Turn(current.completedTurns, reply.toolCalls, Nil)
 
+  /** `tokenBudget = None` is the unlimited mode — no window guard, the session never refuses a call. */
   private[ollama] def raiseWhenBudgetSpent(policy: LoopPolicy, current: OllamaSessionState): F[Unit] =
     policy.tokenBudget match {
+      case None => Async[F].unit
       case Some(budget) if current.spentTokens >= budget =>
         Async[F].raiseError(OllamaTokenBudgetExhausted(correlationId, current.spentTokens, budget))
-      case _ => Async[F].unit
+      case Some(_) => Async[F].unit
     }
 
   private def retried(call: F[OllamaChatReply]): F[OllamaChatReply] =

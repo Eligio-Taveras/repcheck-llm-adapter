@@ -189,13 +189,14 @@ class OllamaLlmProviderSpec
     }
   }
 
-  it should "allow further calls while the budget is not yet spent" in {
+  it should "allow further calls while the budget is not yet spent, numbering each turn" in {
     stubOk()
     val roomy = policy.copy(tokenBudget = Some(1000))
     withSession(config(), roomy) { session =>
       session.exchange(List(ChatMessage("user", "go"))) *>
         session.exchange(List(ChatMessage("tool", "result")))
     }.asserting { turn =>
+      turn.index shouldBe 1 // second turn of the session — the provider reports real indices
       turn.toolCalls.map(_.name) shouldBe List("echo")
       countRequests() shouldBe 2
     }

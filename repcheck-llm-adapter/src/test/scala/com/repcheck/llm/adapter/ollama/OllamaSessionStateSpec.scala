@@ -18,7 +18,7 @@ class OllamaSessionStateSpec extends AnyFlatSpec with Matchers {
   }
 
   it should "append only the not-yet-consumed base messages after the retained transcript" in {
-    val prior        = OllamaSessionState(consumed = 1, transcript = Vector(assistant), spentTokens = 0L)
+    val prior = OllamaSessionState(consumed = 1, transcript = Vector(assistant), spentTokens = 0L, completedTurns = 1)
     val conversation = List(ChatMessage("user", "go"), ChatMessage("tool", "result"))
     prior.extendedWith(conversation) shouldBe Vector(
       assistant,
@@ -26,10 +26,15 @@ class OllamaSessionStateSpec extends AnyFlatSpec with Matchers {
     )
   }
 
-  "advancedBy" should "retain the assistant reply verbatim and accumulate the token spend" in {
+  "advancedBy" should "retain the assistant reply verbatim, accumulate the token spend, and count the turn" in {
     val extended = Vector(Json.obj("role" -> "user".asJson, "content" -> "go".asJson))
-    val advanced = OllamaSessionState(0, Vector.empty, 7L).advancedBy(1, extended, reply)
-    advanced shouldBe OllamaSessionState(consumed = 1, transcript = extended :+ assistant, spentTokens = 22L)
+    val advanced = OllamaSessionState(0, Vector.empty, 7L, 3).advancedBy(1, extended, reply)
+    advanced shouldBe OllamaSessionState(
+      consumed = 1,
+      transcript = extended :+ assistant,
+      spentTokens = 22L,
+      completedTurns = 4,
+    )
   }
 
 }

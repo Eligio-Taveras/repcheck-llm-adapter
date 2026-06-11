@@ -6,10 +6,15 @@ import repcheck.shared.models.llm.prompt.ChatMessage
 
 /**
  * What the session has put on the wire so far: how many base-conversation messages are already in `transcript`
- * (assistant replies are interleaved, so the transcript is longer than the base history), and the cumulative token
- * spend for the `LoopPolicy.tokenBudget` window guard.
+ * (assistant replies are interleaved, so the transcript is longer than the base history), the cumulative token spend
+ * for the `LoopPolicy.tokenBudget` window guard, and how many turns have completed (the next `Turn`'s index).
  */
-final private[ollama] case class OllamaSessionState(consumed: Int, transcript: Vector[Json], spentTokens: Long) {
+final private[ollama] case class OllamaSessionState(
+  consumed: Int,
+  transcript: Vector[Json],
+  spentTokens: Long,
+  completedTurns: Int,
+) {
 
   /**
    * The wire view of `conversation`: the retained transcript plus the not-yet-wired base messages. Dropping `consumed`
@@ -24,10 +29,11 @@ final private[ollama] case class OllamaSessionState(consumed: Int, transcript: V
       conversationLength,
       extended :+ reply.assistantMessage,
       spentTokens + reply.promptEvalCount + reply.evalCount,
+      completedTurns + 1,
     )
 
 }
 
 private[ollama] object OllamaSessionState {
-  val initial: OllamaSessionState = OllamaSessionState(0, Vector.empty, 0L)
+  val initial: OllamaSessionState = OllamaSessionState(0, Vector.empty, 0L, 0)
 }
