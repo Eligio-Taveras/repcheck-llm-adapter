@@ -1,6 +1,9 @@
 # repcheck-llm-adapter
 
-A new RepCheck module
+Vendor-neutral LLM provider layer + the bounded agentic tool-use loop (bill-decomposition plan F2). `LlmProvider.open`
+yields a stateful `LlmSession` (the session seam — history + tools retained, callers send deltas only);
+`DefaultAgenticLlmRunner` drives the loop to a schema-valid `submit`. Providers: `OllamaLlmProvider` (`/api/chat`
+tool calling); `ClaudeLlmProvider` planned (F2c).
 
 Part of the [RepCheck](https://github.com/Eligio-Taveras) platform -- a citizen-facing system that helps users understand how their legislators vote relative to their personal political interests.
 
@@ -42,6 +45,26 @@ sbt scalafixAll --check  # Check import ordering and lint rules
 sbt scalafixAll          # Auto-fix import ordering
 sbt coverage test coverageReport  # Run tests with coverage
 ```
+
+## Conformance tests against live Ollama (DockerRequired)
+
+`OllamaLlmProviderConformanceSpec` runs the agentic loop against a REAL Ollama and is excluded from `sbt test`
+(the build sets `-l DockerRequired`). To run it, Ollama must be reachable (default `http://localhost:11434`) with a
+tool-calling model pulled (default `qwen3:0.6b`):
+
+```bash
+ollama pull qwen3:0.6b   # once
+```
+
+Then (the `-l` exclusion must be replaced with `-n`, so use a command file piped to sbt):
+
+```text
+project repcheckllmadapter
+set Test / testOptions := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-n", "DockerRequired"))
+testOnly com.repcheck.llm.adapter.ollama.OllamaLlmProviderConformanceSpec
+```
+
+Override the target with `OLLAMA_BASE_URI` / `OLLAMA_TOOL_MODEL` env vars.
 
 ## Project Structure
 
