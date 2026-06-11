@@ -1,7 +1,8 @@
 package com.repcheck.llm.adapter.ollama
 
+import io.circe.Json
+import io.circe.parser.parse
 import io.circe.syntax._
-import io.circe.{parser, Json}
 
 import org.http4s.Uri
 
@@ -42,7 +43,7 @@ private[ollama] object OllamaWire {
 
   def parseReply(rawBody: String): Either[OllamaResponseParseFailed, OllamaChatReply] =
     for {
-      body    <- parser.parse(rawBody).left.map(e => OllamaResponseParseFailed(e.message, rawBody))
+      body    <- parse(rawBody).left.map(e => OllamaResponseParseFailed(e.message, rawBody))
       message <- body.hcursor.get[Json]("message").left.map(_ => OllamaResponseParseFailed("no 'message'", rawBody))
       calls   <- toolCallsOf(message, rawBody)
     } yield OllamaChatReply(message, calls, countOf(body, "prompt_eval_count"), countOf(body, "eval_count"))
@@ -74,7 +75,7 @@ private[ollama] object OllamaWire {
 
   /** Some Ollama builds return `arguments` as a JSON-encoded string; decode it so tools always see structured Json. */
   private def normalizedArguments(args: Json): Json =
-    args.asString.flatMap(raw => parser.parse(raw).toOption).getOrElse(args)
+    args.asString.flatMap(raw => parse(raw).toOption).getOrElse(args)
 
   private def countOf(body: Json, field: String): Long =
     body.hcursor.get[Long](field).getOrElse(0L)

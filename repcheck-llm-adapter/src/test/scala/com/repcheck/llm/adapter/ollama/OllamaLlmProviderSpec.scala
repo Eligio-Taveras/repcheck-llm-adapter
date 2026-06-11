@@ -5,8 +5,9 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.testing.scalatest.AsyncIOSpec
 
+import io.circe.Json
+import io.circe.parser.parse
 import io.circe.syntax._
-import io.circe.{parser, Json}
 
 import org.http4s.Uri
 import org.http4s.ember.client.EmberClientBuilder
@@ -80,7 +81,7 @@ class OllamaLlmProviderSpec
 
   private def requestBody(index: Int): Json = {
     val raw = server.findAll(postRequestedFor(urlEqualTo("/api/chat"))).get(index).getBodyAsString
-    parser.parse(raw).fold(e => fail(s"request $index was not JSON: $e"), identity)
+    parse(raw).fold(e => fail(s"request $index was not JSON: $e"), identity)
   }
 
   private def messagesOf(body: Json): List[Json] =
@@ -116,7 +117,7 @@ class OllamaLlmProviderSpec
       val second = messagesOf(requestBody(1))
       second.take(first.size) shouldBe first // the prior request is a verbatim prefix — cacheable
       second.drop(first.size) shouldBe List(
-        parser.parse(assistantToolCall).fold(e => fail(s"bad fixture: $e"), identity), // assistant reply, verbatim
+        parse(assistantToolCall).fold(e => fail(s"bad fixture: $e"), identity), // assistant reply, verbatim
         Json.obj("role" -> "tool".asJson, "content" -> "result".asJson), // then only the delta
       )
     }
