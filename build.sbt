@@ -83,8 +83,10 @@ lazy val repcheckllmadapter = (project in file("repcheck-llm-adapter"))
     libraryDependencies += "com.h2database" % "h2" % "2.2.224" % Test,
     libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.55", // F1 contracts (llm/*, incl. llm/prompt)
     libraryDependencies += "com.repcheck" %% "repcheck-utils" % "0.1.4", // RetryWrapper/ErrorClassifier + DockerRequired tag
-    // DockerRequired conformance specs need a live Ollama; excluded from `sbt test` (run them explicitly, see README)
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-l", "DockerRequired"),
+    libraryDependencies += "com.anthropic" % "anthropic-java" % "2.18.0", // Claude Messages API (F2c provider)
+    // Conformance specs need live infra (Ollama / Anthropic API key); excluded from `sbt test` — see README
+    Test / testOptions +=
+      Tests.Argument(TestFrameworks.ScalaTest, "-l", "DockerRequired", "-l", "com.repcheck.tags.E2ETest"),
     // Circe semi-auto derivation for large case classes
     scalacOptions += "-Xmax-inlines:64",
     // Suppress Scala 3 ScalaTest-matcher warnings in TEST sources only (mirrors data-ingestion / shared-models)
