@@ -3,6 +3,8 @@ package com.repcheck.llm.adapter.claude
 import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters._
 
+import io.circe.Json
+
 import com.anthropic.models.messages.{
   CacheControlEphemeral,
   ContentBlockParam,
@@ -58,7 +60,7 @@ private[claude] object ClaudeWire {
   def toolOf(spec: ToolSpec): Tool = {
     val schema = Tool.InputSchema
       .builder()
-      .`type`(ClaudeJson.toJsonValue(io.circe.Json.fromString("object")))
+      .`type`(ClaudeJson.toJsonValue(Json.fromString("object")))
     spec.parametersSchema.asObject.toList
       .flatMap(_.toList)
       .filterNot { case (key, _) => key == "type" }
@@ -122,13 +124,13 @@ private[claude] object ClaudeWire {
         MessageParam
           .builder()
           .role(MessageParam.Role.USER)
-          .contentOfBlockParams((earlier.reverse :+ markBlock(last)).asJava)
+          .contentOfBlockParams((earlier.reverse :+ withCacheMarker(last)).asJava)
           .build()
       case Nil => user
     }
   }
 
-  private def markBlock(block: ContentBlockParam): ContentBlockParam = {
+  private def withCacheMarker(block: ContentBlockParam): ContentBlockParam = {
     val asToolResult = block
       .toolResult()
       .toScala

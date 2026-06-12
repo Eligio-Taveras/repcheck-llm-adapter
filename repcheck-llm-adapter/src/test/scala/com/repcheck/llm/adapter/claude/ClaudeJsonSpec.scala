@@ -3,7 +3,7 @@ package com.repcheck.llm.adapter.claude
 import io.circe.Json
 import io.circe.syntax._
 
-import com.anthropic.core.{JsonMissing, JsonValue}
+import com.anthropic.core.{JsonMissing, JsonNumber, JsonValue}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -36,6 +36,19 @@ class ClaudeJsonSpec extends AnyFlatSpec with Matchers {
     ClaudeJson.toCirce(JsonValue.from(7L)) shouldBe 7.asJson
     ClaudeJson.toCirce(JsonValue.from(2.25d)) shouldBe 2.25.asJson
     ClaudeJson.toCirce(JsonValue.from(1.5f)) shouldBe 1.5.asJson
+  }
+
+  it should "degrade a Number impl with a non-numeric toString to Json.Null instead of throwing" in {
+    object Rogue extends Number {
+      override def toString: String      = "not-a-number"
+      override def intValue(): Int       = 0
+      override def longValue(): Long     = 0L
+      override def floatValue(): Float   = 0f
+      override def doubleValue(): Double = 0d
+    }
+    // JsonNumber.of is the SDK's public, unvalidated door for arbitrary Number impls — JsonValue.from would
+    // reject this eagerly via Jackson, but values built with of() reach the visitor as-is
+    ClaudeJson.toCirce(JsonNumber.of(Rogue)) shouldBe Json.Null
   }
 
 }

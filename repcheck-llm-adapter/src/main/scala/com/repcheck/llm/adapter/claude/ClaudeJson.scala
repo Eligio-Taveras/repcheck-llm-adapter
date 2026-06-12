@@ -38,7 +38,8 @@ private[claude] object ClaudeJson {
     value match {
       case d: java.lang.Double if d.isNaN || d.isInfinite => Json.Null
       case f: java.lang.Float if f.isNaN || f.isInfinite  => Json.Null
-      case other                                          => Json.fromBigDecimal(BigDecimal(other.toString))
+      // total over ANY Number impl: an exotic subclass whose toString isn't numeric degrades to Null, never throws
+      case other => scala.util.Try(BigDecimal(other.toString)).fold(_ => Json.Null, Json.fromBigDecimal)
     }
 
 }
