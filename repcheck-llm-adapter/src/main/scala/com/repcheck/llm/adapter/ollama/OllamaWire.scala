@@ -11,6 +11,8 @@ import org.http4s.Uri
 import repcheck.shared.models.llm.prompt.ChatMessage
 import repcheck.shared.models.llm.tool.{ToolCall, ToolSpec}
 
+import com.repcheck.llm.adapter.ToolDescriptions
+
 /** Pure request/response mapping for `/api/chat` — kept side-effect free so every wire branch is directly testable. */
 private[ollama] object OllamaWire {
 
@@ -29,16 +31,12 @@ private[ollama] object OllamaWire {
   def wireMessage(message: ChatMessage): Json =
     Json.obj("role" -> message.role.asJson, "content" -> message.content.asJson)
 
-  /**
-   * The wire tool definition only carries name/description/parameters, so the D21 "show the model both shapes" rule
-   * rides in the description: example arguments, the result schema, and an example result (all codec-derived).
-   */
   def toolJson(spec: ToolSpec): Json =
     Json.obj(
       "type" -> "function".asJson,
       "function" -> Json.obj(
         "name"        -> spec.name.asJson,
-        "description" -> describedWithShapes(spec).asJson,
+        "description" -> ToolDescriptions.withShapes(spec).asJson,
         "parameters"  -> spec.parametersSchema,
       ),
     )
@@ -52,10 +50,6 @@ private[ollama] object OllamaWire {
 
   private def systemMessage(system: String): Json =
     Json.obj("role" -> "system".asJson, "content" -> system.asJson)
-
-  private def describedWithShapes(spec: ToolSpec): String =
-    s"${spec.description} Example arguments: ${spec.exampleArgs.noSpaces}. " +
-      s"Result schema: ${spec.resultSchema.noSpaces}. Example result: ${spec.exampleResult.noSpaces}."
 
   private def toolCallsOf(message: Json, rawBody: String): Either[OllamaResponseParseFailed, List[ToolCall]] =
     message.hcursor.get[List[Json]]("tool_calls").getOrElse(Nil).traverse(toolCallOf(_, rawBody))

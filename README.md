@@ -3,7 +3,8 @@
 Vendor-neutral LLM provider layer + the bounded agentic tool-use loop (bill-decomposition plan F2). `LlmProvider.open`
 yields a stateful `LlmSession` (the session seam — history + tools retained, callers send deltas only);
 `DefaultAgenticLlmRunner` drives the loop to a schema-valid `submit`. Providers: `OllamaLlmProvider` (`/api/chat`
-tool calling); `ClaudeLlmProvider` planned (F2c).
+tool calling, KV prefix-cache-friendly append-only transcript) and `ClaudeLlmProvider` (Messages API forced tool use,
+`cache_control` prompt caching, tool_result↔tool_use id pairing).
 
 Part of the [RepCheck](https://github.com/Eligio-Taveras) platform -- a citizen-facing system that helps users understand how their legislators vote relative to their personal political interests.
 
@@ -65,6 +66,20 @@ testOnly com.repcheck.llm.adapter.ollama.OllamaLlmProviderConformanceSpec
 ```
 
 Override the target with `OLLAMA_BASE_URI` / `OLLAMA_TOOL_MODEL` env vars.
+
+## Conformance tests against the live Anthropic API (E2ETest)
+
+`ClaudeLlmProviderConformanceSpec` runs the loop against the REAL Messages API (costs a few cents on haiku) and is
+excluded from `sbt test`. It asserts the cloud context-efficiency law for real: the first call must report
+`cache_creation_input_tokens > 0` and the second `cache_read_input_tokens > 0`. Needs `ANTHROPIC_API_KEY` in the
+environment (Windows user-scope works). Command file piped to sbt:
+
+```text
+set repcheckllmadapter / Test / testOptions := Seq(Tests.Argument(TestFrameworks.ScalaTest, "-n", "com.repcheck.tags.E2ETest"))
+repcheckllmadapter/testOnly com.repcheck.llm.adapter.claude.ClaudeLlmProviderConformanceSpec
+```
+
+Override the model with `ANTHROPIC_TOOL_MODEL` (default `claude-haiku-4-5-20251001`).
 
 ## Project Structure
 
