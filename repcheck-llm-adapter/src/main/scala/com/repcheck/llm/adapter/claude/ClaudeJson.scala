@@ -4,20 +4,26 @@ import scala.jdk.CollectionConverters._
 
 import io.circe.Json
 
-import com.anthropic.core.JsonValue
-import com.fasterxml.jackson.databind.ObjectMapper
+import com.anthropic.core.{JsonArray, JsonBoolean, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue}
 
 /**
- * Bridge between circe (our codec layer) and the SDK's `JsonValue` wire values. The response side is a TOTAL structural
- * traversal via the SDK's own visitor — every node kind maps explicitly, no class tokens, no reflection, nothing to
- * throw: the lossy corners (a missing value, a NaN/infinite number JSON cannot represent) map to `Json.Null` by design.
+ * Bridge between circe (our codec layer) and the SDK's `JsonValue` wire values — a TOTAL structural interpreter in both
+ * directions: circe's `fold` outbound, the SDK's own visitor inbound. Every node kind maps explicitly — no class
+ * tokens, no reflection, no string round-trips, nothing to throw. The lossy corners (a missing value, a NaN/infinite
+ * number JSON cannot represent) map to `Json.Null` by design.
  */
 private[claude] object ClaudeJson {
 
-  private val mapper = new ObjectMapper()
-
   def toJsonValue(json: Json): JsonValue =
-    JsonValue.fromJsonNode(mapper.readTree(json.noSpaces))
+    json.fold(
+      jsonNull = JsonNull.of(),
+      jsonBoolean = JsonBoolean.of(_),
+      // a circe JsonNumber's toString is contractually its exact JSON numeric literal — BigDecimal parses it exactly
+      jsonNumber = number => JsonNumber.of(new java.math.BigDecimal(number.toString)),
+      jsonString = JsonString.of(_),
+      jsonArray = values => JsonArray.of(values.map(toJsonValue).asJava),
+      jsonObject = fields => JsonObject.of(fields.toMap.map { case (key, value) => (key, toJsonValue(value)) }.asJava),
+    )
 
   def toCirce(value: JsonValue): Json =
     value.accept(new JsonValue.Visitor[Json] {

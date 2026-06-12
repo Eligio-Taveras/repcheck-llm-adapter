@@ -32,6 +32,14 @@ class ClaudeJsonSpec extends AnyFlatSpec with Matchers {
     ClaudeJson.toCirce(JsonValue.from(Float.NaN)) shouldBe Json.Null
   }
 
+  it should "round-trip numbers at full precision — outbound is structural, no document re-parse" in {
+    val precise = Json.obj(
+      "big"     -> Long.MaxValue.asJson,
+      "decimal" -> BigDecimal("123456789.000000001").asJson,
+    )
+    ClaudeJson.toCirce(ClaudeJson.toJsonValue(precise)) shouldBe precise
+  }
+
   it should "convert plain finite numbers exactly" in {
     ClaudeJson.toCirce(JsonValue.from(7L)) shouldBe 7.asJson
     ClaudeJson.toCirce(JsonValue.from(2.25d)) shouldBe 2.25.asJson
