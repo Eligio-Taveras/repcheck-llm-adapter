@@ -81,7 +81,7 @@ lazy val repcheckllmadapter = (project in file("repcheck-llm-adapter"))
       ++ catsEffect ++ testDeps
     ,
     libraryDependencies += "com.h2database" % "h2" % "2.2.224" % Test,
-    libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.55", // F1 contracts (llm/*, incl. llm/prompt)
+    libraryDependencies += "com.repcheck" %% "repchecksharedmodels" % "0.1.59", // F1 contracts (llm/*, LlmTool[F,In,Out])
     libraryDependencies += "com.repcheck" %% "repcheck-utils" % "0.1.4", // RetryWrapper/ErrorClassifier + DockerRequired tag
     libraryDependencies += "com.anthropic" % "anthropic-java" % "2.18.0", // Claude Messages API (F2c provider)
     // Conformance specs need live infra (Ollama / Anthropic API key); excluded from `sbt test` — see README

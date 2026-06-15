@@ -25,13 +25,13 @@ final class DefaultAgenticLlmRunner[F[_]: Sync: UUIDGen](provider: LlmProvider[F
 
   import DefaultAgenticLlmRunner.{LoopState, RunContext}
 
-  def run[A](prompt: AssembledPrompt, tools: List[LlmTool[F]], policy: LoopPolicy)(using
+  def run[A](prompt: AssembledPrompt, tools: List[LlmTool[F, ?, ?]], policy: LoopPolicy)(using
     sc: StructuredCodec[A]
   ): F[AgenticResult[A]] = {
-    val submit   = new SubmitTool[F, A](StructuredSchema.from[A])
-    val allTools = submit :: tools
-    val byName   = allTools.map(t => t.spec.name -> t).toMap
-    val specs    = allTools.map(_.spec)
+    val submit                           = new SubmitTool[F, A](StructuredSchema.from[A])
+    val allTools: List[LlmTool[F, ?, ?]] = submit :: tools
+    val byName                           = allTools.map(t => t.spec.name -> t).toMap
+    val specs                            = allTools.map(_.spec)
     UUIDGen[F].randomUUID.flatMap { correlationId =>
       provider.open(prompt.system, specs, policy).use { session =>
         loop(RunContext(correlationId, byName, policy, session), LoopState(prompt.messages, 0, Vector.empty))
@@ -80,13 +80,13 @@ final class DefaultAgenticLlmRunner[F[_]: Sync: UUIDGen](provider: LlmProvider[F
       loop(ctx, state.advanced(toolResultMessages(results), recorded.copy(toolResults = results)))
     }
 
-  private def dispatchToolCall(byName: Map[String, LlmTool[F]])(call: ToolCall): F[ToolResult] =
+  private def dispatchToolCall(byName: Map[String, LlmTool[F, ?, ?]])(call: ToolCall): F[ToolResult] =
     byName.get(call.name) match {
       case None => Sync[F].pure(ToolResult(call.name, unknownToolError(call.name), isError = true))
       case Some(tool) =>
-        tool.decode(call.arguments) match {
-          case Left(err) => Sync[F].pure(ToolResult(call.name, err.asJson, isError = true))
-          case Right(in) => tool.execute(in).map(out => ToolResult(call.name, tool.encodeResult(out), isError = false))
+        tool.invoke(call.arguments).map {
+          case Left(err)   => ToolResult(call.name, err.asJson, isError = true)
+          case Right(json) => ToolResult(call.name, json, isError = false)
         }
     }
 
@@ -104,7 +104,7 @@ object DefaultAgenticLlmRunner {
   /** Immutable context for one `run`: the correlation id, the tool registry, the policy, and the open session. */
   final private case class RunContext[F[_]](
     correlationId: UUID,
-    byName: Map[String, LlmTool[F]],
+    byName: Map[String, LlmTool[F, ?, ?]],
     policy: LoopPolicy,
     session: LlmSession[F],
   )

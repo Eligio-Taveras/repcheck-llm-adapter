@@ -165,9 +165,7 @@ class AgenticLlmRunnerSpec extends AsyncFlatSpec with AsyncIOSpec with Matchers 
       }
   }
 
-  private object EchoTool extends LlmTool[IO] {
-    type In  = String
-    type Out = String
+  private object EchoTool extends LlmTool[IO, String, String] {
     val spec: ToolSpec = ToolSpec("echo", "echoes", Json.obj(), Json.obj(), Json.obj(), Json.obj())
 
     def decode(args: Json): Either[ToolInputError, String] =

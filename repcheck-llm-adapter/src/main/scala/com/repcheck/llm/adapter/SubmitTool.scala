@@ -12,9 +12,7 @@ import repcheck.shared.models.llm.tool.{LlmTool, ToolInputError, ToolSpec}
  * Its `input_schema` is the output type's JSON Schema, so the answer is schema-constrained exactly like any tool call.
  */
 final class SubmitTool[F[_]: Applicative, A](output: StructuredSchema[A])(using codec: StructuredCodec[A])
-    extends LlmTool[F] {
-  type In  = A
-  type Out = A
+    extends LlmTool[F, A, A] {
 
   val spec: ToolSpec = ToolSpec(
     name = SubmitTool.Name,

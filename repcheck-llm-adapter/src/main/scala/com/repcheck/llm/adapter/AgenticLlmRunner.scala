@@ -12,7 +12,7 @@ import repcheck.shared.models.llm.tool.LlmTool
  */
 trait AgenticLlmRunner[F[_]] {
 
-  def run[A](prompt: AssembledPrompt, tools: List[LlmTool[F]], policy: LoopPolicy)(using
+  def run[A](prompt: AssembledPrompt, tools: List[LlmTool[F, ?, ?]], policy: LoopPolicy)(using
     StructuredCodec[A]
   ): F[AgenticResult[A]]
 
